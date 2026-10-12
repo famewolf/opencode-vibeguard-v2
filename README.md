@@ -53,7 +53,9 @@ session from *reaching the provider*. Either one alone leaves a gap — tokens
 have leaked into sessions past cc-safety-net, and vibeguard alone cannot stop a
 `read` of a secret file. Run both.
 
-Manage the shared deny list with the bundled script (Node 20+, no dependencies):
+Manage the shared deny list with the bundled script (Node 20+, no dependencies).
+It works with or without cc-safety-net installed — it only reads and writes the
+policy file, and `--init` creates an empty one if none exists:
 
 ```sh
 # first time without cc-safety-net: create an empty policy file
@@ -65,6 +67,12 @@ node scripts/add-deny-path.mjs list
 # custom policy location (mirrors the deny_policy config option)
 node scripts/add-deny-path.mjs --policy /path/to/policy.json list
 ```
+
+Standalone vs paired: on its own, vibeguard keeps registered files' contents
+from reaching the provider, but nothing stops the model from reading them into
+the session in plaintext (local transcripts still hold the real values).
+cc-safety-net provides that second half by blocking sensitive tool calls. Either
+tool helps alone; together they cover both directions.
 
 With `"import_deny_paths": true`, every registered file is re-read at each
 plugin setup, so no re-export step is needed when the list changes.
