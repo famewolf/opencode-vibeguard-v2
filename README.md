@@ -73,11 +73,55 @@ is a no-op when no config is found or `enabled=false`. See `vibeguard.config.jso
 
 Invalid regex rules are skipped at setup with an error log instead of breaking every model request.
 
-Builtin patterns: `email`, `china_phone`, `china_id`, `uuid`, `ipv4`, `mac`. Add your own secrets as
-`keywords` and `regex` entries.
+Builtin patterns: `email`, `china_phone`, `china_id`, `uuid`, `ipv4`, `mac`,
+plus the `secrets` group (on by default): OpenAI/Anthropic/Google keys, GitHub
+`gh[pousr]_` + `github_pat_`, GitLab, AWS access/secret, Slack tokens + webhooks,
+Stripe, npm/PyPI, private-key headers, password-bearing database URLs, and generic
+`password = ...` / `api_key: ...` assignments. Omit `builtin` to get `secrets`;
+pass an explicit list (even `[]`) to opt out. `ipv4` validates 0-255 per octet
+(`999.999.999.999` is left alone).
+
+The plugin is a no-op when no config is found or `enabled=false`, and now logs a
+loud `DISABLED` error in that case instead of staying silent.
 
 Debug: set `"debug": true` in the config or `OPENCODE_VIBEGUARD_DEBUG=1`. Debug writes load
 diagnostics to `<tmpdir>/opencode-vibeguard-trace.log`.
+
+## Protecting file contents (tokens, .env, yaml)
+
+Point the plugin at files whose contents must never reach the provider:
+
+```json
+{
+  "patterns": {
+    "protected_files": ["/home/user/.config/myapp/token", "/home/user/project/.env"],
+    "min_secret_len": 8,
+    "import_deny_paths": true
+  }
+}
+```
+
+Each file is read at setup (64KB cap) and every `KEY=VALUE` / `KEY: VALUE` value
+or single-token line becomes a keyword. Unreadable files log a warning, never a
+crash, and values are never logged.
+
+To ingest your cc-safety-net deny list, either set `"import_deny_paths": true`
+(reads `~/.cc-safety-net/policy.json`, override with `"deny_policy"`), or export
+a static snippet:
+
+```sh
+node scripts/sync-deny-paths.mjs --out vibeguard.keywords.json
+# paste the keywords array into vibeguard.config.json under patterns.keywords
+```
+
+The script prints counts only, never secret values.
+
+## Reliability notes
+
+- Sessions are bounded (`session.max_sessions`, default 50, LRU-evicted).
+- Inputs over `patterns.max_text_chars` (default 500000) are scanned up to the
+  cap and flagged; the tail passes through and a debug warning is logged.
+- `redactDeep`/`restoreDeep` walk `Array`, plain objects, `Map`, and `Set`.
 
 ## Development
 

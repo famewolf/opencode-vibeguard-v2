@@ -52,6 +52,12 @@ export function redactText(input, patterns, session) {
   const text = String(input ?? "")
   if (!text) return { text, matches: [] }
 
+  const maxChars =
+    Number.isFinite(patterns?.maxTextChars) && patterns.maxTextChars > 0 ? patterns.maxTextChars : 500000
+  const truncated = text.length > maxChars
+  const head = truncated ? text.slice(0, maxChars) : text
+  const tail = truncated ? text.slice(maxChars) : ""
+
   const found = []
 
   for (const rule of patterns.keywords) {
@@ -59,11 +65,11 @@ export function redactText(input, patterns, session) {
     if (!needle) continue
     let idx = 0
     for (;;) {
-      const pos = text.indexOf(needle, idx)
+      const pos = head.indexOf(needle, idx)
       if (pos === -1) break
       const start = pos
       const end = pos + needle.length
-      const original = text.slice(start, end)
+      const original = head.slice(start, end)
       idx = end
       if (patterns.exclude.has(original)) continue
       found.push({ start, end, original, category: rule.category })
@@ -73,18 +79,20 @@ export function redactText(input, patterns, session) {
   for (const rule of patterns.regex) {
     const re = rule.regex
     if (!(re instanceof RegExp)) continue
-    for (const m of text.matchAll(re)) {
+    // matchAll on a fresh head string; reset lastIndex in case of shared /g regexes
+    re.lastIndex = 0
+    for (const m of head.matchAll(re)) {
       if (!m[0]) continue
       const start = m.index ?? -1
       if (start < 0) continue
       const end = start + m[0].length
-      const original = text.slice(start, end)
+      const original = head.slice(start, end)
       if (patterns.exclude.has(original)) continue
       found.push({ start, end, original, category: rule.category })
     }
   }
 
-  if (found.length === 0) return { text, matches: [] }
+  if (found.length === 0) return { text, matches: [], truncated }
 
   // Rightmost first; same start prefers longer, so large left-side hits get split
   found.sort((a, b) => {
@@ -97,11 +105,11 @@ export function redactText(input, patterns, session) {
   for (const m of found) {
     const segments = subtractCovered(m.start, m.end, covered)
     for (const seg of segments) {
-      if (seg.start < 0 || seg.end > text.length || seg.start >= seg.end) continue
+      if (seg.start < 0 || seg.end > head.length || seg.start >= seg.end) continue
       planned.push({
         start: seg.start,
         end: seg.end,
-        original: text.slice(seg.start, seg.end),
+        original: head.slice(seg.start, seg.end),
         category: m.category,
       })
       covered = insertCovered(covered, seg)
@@ -110,12 +118,12 @@ export function redactText(input, patterns, session) {
 
   planned.sort((a, b) => b.start - a.start)
 
-  let out = text
+  let out = head
   for (const m of planned) {
     const placeholder = session.getOrCreatePlaceholder(m.original, m.category)
     out = out.slice(0, m.start) + placeholder + out.slice(m.end)
     m.placeholder = placeholder
   }
 
-  return { text: out, matches: planned }
+  return { text: out + tail, matches: planned, truncated }
 }

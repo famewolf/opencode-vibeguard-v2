@@ -1,6 +1,6 @@
 {
   "name": "opencode-vibeguard-v2",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "VibeGuard for OpenCode V2: redact secrets/PII into __VG_...__ placeholders before LLM requests, restore them before local tool execution, optional response-stream restore",
   "type": "module",
   "exports": "./index.js",
@@ -12,12 +12,14 @@
     "patterns.js",
     "restore.js",
     "session.js",
+    "secrets.js",
+    "scripts/sync-deny-paths.mjs",
     "README.md",
     "LICENSE",
     "vibeguard.config.json.example"
   ],
   "scripts": {
-    "test": "node --test test/vibeguard.test.mjs"
+    "test": "node --test test/"
   },
   "keywords": [
     "opencode",

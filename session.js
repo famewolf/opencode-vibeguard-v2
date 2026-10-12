@@ -144,3 +144,37 @@ export function getPlaceholderRegex(prefix) {
   // Pattern: __VG_CATEGORY_HASH12__ or __VG_CATEGORY_HASH12_N__
   return new RegExp(`${escaped}[A-Za-z0-9_]+_[a-f0-9A-F]{12}(?:_\\d+)?__`, "g")
 }
+
+/**
+ * Bounded per-session store with LRU eviction (insertion-order Map).
+ * Prevents unbounded growth in long-lived processes with many sessions.
+ */
+export function createSessionStore(options, create) {
+  const maxSessions =
+    Number.isFinite(options?.maxSessions) && Number(options.maxSessions) > 0
+      ? Math.floor(Number(options.maxSessions))
+      : 50
+  const sessions = new Map()
+  return {
+    get(key) {
+      const id = String(key ?? "")
+      if (!id) return null
+      const existing = sessions.get(id)
+      if (existing) {
+        sessions.delete(id)
+        sessions.set(id, existing)
+        return existing
+      }
+      const created = create(id)
+      sessions.set(id, created)
+      while (sessions.size > maxSessions) {
+        const oldest = sessions.keys().next().value
+        sessions.delete(oldest)
+      }
+      return created
+    },
+    size() {
+      return sessions.size
+    },
+  }
+}

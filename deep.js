@@ -10,7 +10,7 @@ function isPlainObject(value) {
 
 /**
  * Deep-walk a tool argument object and restore every placeholder string in place.
- * - Only walks Array / PlainObject
+ * - Walks Array / PlainObject / Map / Set
  * - Uses a WeakSet to avoid infinite recursion on cycles
  * @returns {number} number of restored strings
  * @param {unknown} value
@@ -20,6 +20,12 @@ export function restoreDeep(value, session) {
   const seen = new WeakSet()
   let changed = 0
 
+  const restoreString = (v) => {
+    const after = restoreText(v, session)
+    if (after !== v) changed++
+    return after
+  }
+
   const walk = (node) => {
     if (!node || typeof node !== "object") return
     if (seen.has(node)) return
@@ -28,12 +34,33 @@ export function restoreDeep(value, session) {
     if (Array.isArray(node)) {
       for (let i = 0; i < node.length; i++) {
         const v = node[i]
-        if (typeof v === "string") {
-          const after = restoreText(v, session)
-          if (after !== v) changed++
-          node[i] = after
-        }
+        if (typeof v === "string") node[i] = restoreString(v)
         if (v && typeof v === "object") walk(v)
+      }
+      return
+    }
+
+    if (node instanceof Map) {
+      for (const [k, v] of node.entries()) {
+        const nk = typeof k === "string" ? restoreString(k) : k
+        let nv = v
+        if (typeof v === "string") nv = restoreString(v)
+        else if (v && typeof v === "object") walk(v)
+        if (nk !== k) node.delete(k)
+        node.set(nk, nv)
+      }
+      return
+    }
+
+    if (node instanceof Set) {
+      for (const v of node.values()) {
+        if (typeof v === "string") {
+          const after = restoreString(v)
+          if (after !== v) {
+            node.delete(v)
+            node.add(after)
+          }
+        } else if (v && typeof v === "object") walk(v)
       }
       return
     }
@@ -42,11 +69,7 @@ export function restoreDeep(value, session) {
 
     for (const key of Object.keys(node)) {
       const v = node[key]
-      if (typeof v === "string") {
-        const after = restoreText(v, session)
-        if (after !== v) changed++
-        node[key] = after
-      }
+      if (typeof v === "string") node[key] = restoreString(v)
       if (v && typeof v === "object") walk(v)
     }
   }
@@ -57,7 +80,7 @@ export function restoreDeep(value, session) {
 
 /**
  * Deep-walk an object and replace every sensitive string with a placeholder in place.
- * - Only walks Array / PlainObject
+ * - Walks Array / PlainObject / Map / Set
  * - Uses a WeakSet to avoid infinite recursion on cycles
  * @returns {number} number of redacted strings
  * @param {unknown} value
@@ -68,6 +91,12 @@ export function redactDeep(value, patterns, session) {
   const seen = new WeakSet()
   let changed = 0
 
+  const redactString = (v) => {
+    const after = redactText(v, patterns, session).text
+    if (after !== v) changed++
+    return after
+  }
+
   const walk = (node) => {
     if (!node || typeof node !== "object") return
     if (seen.has(node)) return
@@ -76,12 +105,33 @@ export function redactDeep(value, patterns, session) {
     if (Array.isArray(node)) {
       for (let i = 0; i < node.length; i++) {
         const v = node[i]
-        if (typeof v === "string") {
-          const after = redactText(v, patterns, session).text
-          if (after !== v) changed++
-          node[i] = after
-        }
+        if (typeof v === "string") node[i] = redactString(v)
         if (v && typeof v === "object") walk(v)
+      }
+      return
+    }
+
+    if (node instanceof Map) {
+      for (const [k, v] of node.entries()) {
+        const nk = typeof k === "string" ? redactString(k) : k
+        let nv = v
+        if (typeof v === "string") nv = redactString(v)
+        else if (v && typeof v === "object") walk(v)
+        if (nk !== k) node.delete(k)
+        node.set(nk, nv)
+      }
+      return
+    }
+
+    if (node instanceof Set) {
+      for (const v of node.values()) {
+        if (typeof v === "string") {
+          const after = redactString(v)
+          if (after !== v) {
+            node.delete(v)
+            node.add(after)
+          }
+        } else if (v && typeof v === "object") walk(v)
       }
       return
     }
@@ -90,11 +140,7 @@ export function redactDeep(value, patterns, session) {
 
     for (const key of Object.keys(node)) {
       const v = node[key]
-      if (typeof v === "string") {
-        const after = redactText(v, patterns, session).text
-        if (after !== v) changed++
-        node[key] = after
-      }
+      if (typeof v === "string") node[key] = redactString(v)
       if (v && typeof v === "object") walk(v)
     }
   }

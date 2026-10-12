@@ -41,6 +41,10 @@ function normalizeConfig(raw) {
   const ttlMs = parseDurationMs(session.ttl ?? "1h")
   const maxMappings =
     Number.isFinite(session.max_mappings) && Number(session.max_mappings) > 0 ? Number(session.max_mappings) : 100000
+  const maxSessions =
+    Number.isFinite(session.max_sessions) && Number(session.max_sessions) > 0
+      ? Math.floor(Number(session.max_sessions))
+      : 50
 
   const patterns = cfg.patterns && typeof cfg.patterns === "object" ? cfg.patterns : {}
 
@@ -50,6 +54,7 @@ function normalizeConfig(raw) {
     prefix,
     ttlMs,
     maxMappings,
+    maxSessions,
     patterns,
   }
 }

@@ -3,7 +3,8 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { loadConfig } from "./config.js"
 import { buildPatternSet } from "./patterns.js"
-import { PlaceholderSession } from "./session.js"
+import { PlaceholderSession, createSessionStore } from "./session.js"
+import { loadProtectedKeywords, readDenyPaths } from "./secrets.js"
 import { redactText } from "./engine.js"
 import { restoreText } from "./restore.js"
 import { redactDeep, restoreDeep } from "./deep.js"
@@ -120,9 +121,47 @@ export default {
       console.log(`[opencode-vibeguard] config: ${from} enabled=${config.enabled}`)
     }
 
+    if (!config.loadedFrom) {
+      console.error(
+        "[opencode-vibeguard] DISABLED: no vibeguard.config.json found (checked OPENCODE_VIBEGUARD_CONFIG, ./vibeguard.config.json, ./.opencode/vibeguard.config.json, ~/.config/opencode/vibeguard.config.json). Provider requests are NOT being redacted.",
+      )
+    }
+
     if (!config.enabled) return
 
     const patterns = buildPatternSet(config.patterns)
+
+    // Ingest user-pointed secret files (protected_files) plus, optionally,
+    // cc-safety-net deny_paths (import_deny_paths + deny_policy). File contents
+    // become keywords; failures are warnings, never fatal. Values are never logged.
+    try {
+      const extraFiles = []
+      if (Array.isArray(config.patterns?.protected_files)) extraFiles.push(...config.patterns.protected_files)
+      if (config.patterns?.import_deny_paths) {
+        const home = process.env.HOME || process.env.USERPROFILE || ""
+        const defPolicy = home ? join(home, ".cc-safety-net", "policy.json") : ""
+        const policyPath =
+          typeof config.patterns?.deny_policy === "string" && config.patterns.deny_policy
+            ? config.patterns.deny_policy
+            : defPolicy
+        if (policyPath) extraFiles.push(...(await readDenyPaths(policyPath)))
+      }
+      if (extraFiles.length > 0) {
+        const { keywords, failed } = await loadProtectedKeywords(extraFiles, {
+          minLen: patterns.minSecretLen,
+          category: "SECRET_FILE",
+        })
+        patterns.keywords.push(...keywords)
+        if (debug) {
+          console.log(`[opencode-vibeguard] protected files: ${keywords.length} secret(s) from ${extraFiles.length} file(s)`)
+        }
+        for (const f of failed) {
+          console.error(`[opencode-vibeguard] protected file unreadable: ${f.file}: ${f.message}`)
+        }
+      }
+    } catch (error) {
+      console.error(`[opencode-vibeguard] protected file ingest failed: ${String(error?.message ?? error)}`)
+    }
 
     if (patterns.errors.length > 0) {
       for (const error of patterns.errors) {
@@ -132,21 +171,15 @@ export default {
       }
     }
 
-    const sessions = new Map()
-
-    const getSession = (sessionID) => {
-      const key = String(sessionID ?? "")
-      if (!key) return null
-      const existing = sessions.get(key)
-      if (existing) return existing
-      const created = new PlaceholderSession({
+    const store = createSessionStore({ maxSessions: config.maxSessions }, (key) => {
+      return new PlaceholderSession({
         prefix: config.prefix,
         ttlMs: config.ttlMs,
         maxMappings: config.maxMappings,
       })
-      sessions.set(key, created)
-      return created
-    }
+    })
+
+    const getSession = (sessionID) => store.get(sessionID)
 
     const redactRequest = createMessageRedactor(patterns, getSession, debug)
 
