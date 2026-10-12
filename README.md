@@ -10,18 +10,64 @@ real values.
 ## Install
 
 ```sh
-# from GitHub
-opencode plugin add github:AxeForce/opencode-vibeguard-v2
+# from GitHub (this fork, hardening branch)
+opencode plugin add github:famewolf/opencode-vibeguard-v2
 
 # from a local checkout
 opencode plugin add /absolute/path/to/opencode-vibeguard-v2
 
 # or via config
-# "plugins": ["github:AxeForce/opencode-vibeguard-v2"]
+# "plugins": ["github:famewolf/opencode-vibeguard-v2"]
 ```
 
 OpenCode V2 also auto-discovers global plugins from `~/.config/opencode/plugins/`; dropping this
 directory there works too.
+
+## Setup (5 minutes)
+
+1. **Create a config.** Copy `vibeguard.config.json.example` to one of the lookup
+   locations (`./vibeguard.config.json`, `./.opencode/vibeguard.config.json`, or
+   the global `~/.config/opencode/vibeguard.config.json`) and set
+   `"enabled": true`. Without a config the plugin is a no-op and logs a loud
+   `DISABLED` error — check for that line on first run.
+2. **Register your secret files.** Either one flag to track the cc-safety-net
+   deny list (recommended, see below):
+   ```json
+   { "patterns": { "import_deny_paths": true } }
+   ```
+   or point at files directly:
+   ```json
+   { "patterns": { "protected_files": ["/home/user/.config/myapp/token"] } }
+   ```
+3. **Verify.** Set `"debug": true`, restart opencode, and look for
+   `[opencode-vibeguard] protected files: N secret(s) from M file(s)` (counts
+   only, never values) plus `pre-request redaction: N fragment(s)` on the first
+   request that touches a secret.
+
+## Recommended pairing: cc-safety-net
+
+This plugin and [cc-safety-net](https://github.com/kenryu42/cc-safety-net) solve
+opposite halves of the same leak. cc-safety-net stops the model from *reading*
+sensitive files into the session; vibeguard stops anything already in the
+session from *reaching the provider*. Either one alone leaves a gap — tokens
+have leaked into sessions past cc-safety-net, and vibeguard alone cannot stop a
+`read` of a secret file. Run both.
+
+Manage the shared deny list with the bundled script (Node 20+, no dependencies):
+
+```sh
+# first time without cc-safety-net: create an empty policy file
+node scripts/add-deny-path.mjs --init
+# register a file (absolute paths only, idempotent)
+node scripts/add-deny-path.mjs /absolute/path/to/secret-file
+# show what is registered
+node scripts/add-deny-path.mjs list
+# custom policy location (mirrors the deny_policy config option)
+node scripts/add-deny-path.mjs --policy /path/to/policy.json list
+```
+
+With `"import_deny_paths": true`, every registered file is re-read at each
+plugin setup, so no re-export step is needed when the list changes.
 
 ## How it maps to the V2 plugin API
 

@@ -14,6 +14,7 @@
     "session.js",
     "secrets.js",
     "scripts/sync-deny-paths.mjs",
+    "scripts/add-deny-path.mjs",
     "README.md",
     "LICENSE",
     "vibeguard.config.json.example"
