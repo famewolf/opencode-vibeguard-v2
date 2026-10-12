@@ -84,6 +84,74 @@ pass an explicit list (even `[]`) to opt out. `ipv4` validates 0-255 per octet
 The plugin is a no-op when no config is found or `enabled=false`, and now logs a
 loud `DISABLED` error in that case instead of staying silent.
 
+## Adding your own content
+
+Four ways, from simplest to most explicit. They compose: everything found by any
+method is protected.
+
+**1. Do nothing (recommended start).** The `secrets` builtin group is on by
+default and covers the common token shapes (OpenAI, Anthropic, Google, GitHub,
+GitLab, AWS, Slack, Stripe, npm/PyPI, private keys, password-bearing database
+URLs, generic `password = ...` assignments). If you never set `builtin`, you
+already have it. This catches secret *shapes* but not arbitrary values like a
+bare hex token with no prefix.
+
+**2. Track the cc-safety-net deny list.** One flag imports every file registered
+with the `add-deny-path` tool (`~/.cc-safety-net/policy.json`):
+
+```json
+{ "patterns": { "import_deny_paths": true } }
+```
+
+Flow: `add-deny-path /absolute/path/to/secret-file` once, restart opencode, and
+that file's contents are redacted front-side from then on. Override the policy
+location with `"deny_policy": "/path/to/policy.json"`. To add a single file
+without the deny list, or to include files the deny list does not cover, use
+`protected_files`:
+
+```json
+{ "patterns": { "protected_files": ["/home/user/.config/myapp/token"] } }
+```
+
+Both are read at plugin setup (64KB cap per file). Supported layouts: a file
+holding one bare token, `KEY=VALUE` lines (`.env`, shell exports, quoting
+stripped), and `KEY: VALUE` lines (yaml). Blank lines, `#` comments, short
+values (under `min_secret_len`, default 8), and placeholder words (`changeme`,
+`xxx`, ...) are skipped. Unreadable files log a warning with the path and
+reason, never a crash, and values are never written to logs or stdout.
+
+**3. Static keyword export.** Prefer live tracking (option 2), but if you want
+values pinned in the config, export them once:
+
+```sh
+node scripts/sync-deny-paths.mjs --out vibeguard.keywords.json
+# paste the keywords array into vibeguard.config.json under patterns.keywords
+```
+
+The script prints counts only, never secret values. Re-run it whenever the deny
+list changes; the live `import_deny_paths` option avoids this entirely.
+
+**4. Hand-written keywords and regex.** For one-off values and in-house formats:
+
+```json
+{
+  "patterns": {
+    "keywords": [{ "value": "my-api-key-123", "category": "API_KEY" }],
+    "regex": [{ "pattern": "my-internal-token-[0-9]+", "category": "INTERNAL_TOKEN" }],
+    "exclude": ["safe-to-show.example.com"]
+  }
+}
+```
+
+Keywords are literal case-sensitive matches; regex entries accept an optional
+`"flags"` string. `category` becomes part of the placeholder
+(`__VG_<CATEGORY>_<hash>__`) — keep it descriptive so transcript placeholders
+stay readable. Invalid regexes are skipped with an error log at setup.
+
+Check what is active with `"debug": true` (or `OPENCODE_VIBEGUARD_DEBUG=1`): setup
+logs the config source plus `protected files: N secret(s) from M file(s)` —
+counts only.
+
 Debug: set `"debug": true` in the config or `OPENCODE_VIBEGUARD_DEBUG=1`. Debug writes load
 diagnostics to `<tmpdir>/opencode-vibeguard-trace.log`.
 
