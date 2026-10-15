@@ -23,6 +23,20 @@ opencode plugin add /absolute/path/to/opencode-vibeguard-v2
 OpenCode V2 also auto-discovers global plugins from `~/.config/opencode/plugins/`; dropping this
 directory there works too.
 
+Requires opencode v2.0+. Note the mapping table below: anything marked ❌
+has no server-side hook, on any 2.0.x — those features stay inert regardless
+of version.
+
+## Updating
+
+Re-run the same `opencode plugin add` command (or `git pull` a local
+checkout). Restart the server after updating. There is no in-place updater.
+
+## Uninstall
+
+Remove the entry from your OpenCode config (and the directory for local
+checkouts), restart the server.
+
 ## How it maps to the V2 plugin API
 
 | V1 hook | V2 equivalent |
